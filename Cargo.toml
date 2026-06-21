@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = [
+  "app",
+  "renderer"
+]
+
+[workspace.dependencies]
+grafik-renderer = { path = "renderer" }

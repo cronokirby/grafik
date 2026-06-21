@@ -1,0 +1,7 @@
+# Just in case.
+.git/
+# So that using git doesn't cause issues.
+.jj/
+
+# Rust related things.
+target/
