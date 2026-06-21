@@ -5,5 +5,16 @@ members = [
   "renderer"
 ]
 
+# Optimize all packages, except the app package.
+#
+# We definitely want to optimize all the dependencies, but we also want to optimize
+# the renderer to display images at a reasonable speed. We do want to iterate
+# quickly on scenes in the app though.
+[profile.dev]
+opt-level = 3
+
+[profile.dev.package.grafik-app]
+opt-level = 0
+
 [workspace.dependencies]
 grafik-renderer = { path = "renderer" }
