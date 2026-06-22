@@ -1,8 +1,11 @@
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;
+use std::thread;
 
+use grafik_renderer::{Image, render_loop};
 use pixels::{Error, Pixels, SurfaceTexture};
+use triple_buffer::triple_buffer;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -46,6 +49,10 @@ fn main() -> Result<(), Error> {
         Pixels::new(WIDTH, HEIGHT, surface_texture)?
     };
     let mut world = World::new();
+    let (img_input, img_output) = triple_buffer(&Image::new(WIDTH, HEIGHT));
+    thread::spawn(move || {
+        render_loop(img_input);
+    });
 
     #[allow(deprecated)]
     let res = event_loop.run(|event, elwt| {
@@ -68,6 +75,7 @@ fn main() -> Result<(), Error> {
 
                 // Draw the current frame
                 if event == WindowEvent::RedrawRequested {
+                    img_output.output_buffer().write_out(to);
                     world.draw(pixels.frame_mut());
                     if let Err(_err) = pixels.render() {
                         elwt.exit();
