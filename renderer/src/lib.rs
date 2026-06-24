@@ -6,23 +6,22 @@ use std::{
 pub const MESSAGE: &'static str = "hello from renderer!";
 
 #[derive(Clone, Copy, Debug)]
-pub struct RGBA {
+pub struct RGB {
     pub r: u8,
     pub g: u8,
     pub b: u8,
-    pub a: u8,
 }
 
-impl RGBA {
+impl RGB {
     pub fn black() -> Self {
-        0x00_00_00_FF.into()
+        0x00_00_00.into()
     }
 }
 
-impl From<u32> for RGBA {
+impl From<u32> for RGB {
     fn from(value: u32) -> Self {
-        let [r, g, b, a] = value.to_be_bytes();
-        Self { r, g, b, a }
+        let [_, r, g, b] = value.to_be_bytes();
+        Self { r, g, b }
     }
 }
 
@@ -30,7 +29,7 @@ impl From<u32> for RGBA {
 pub struct Image {
     pub width: u32,
     pub height: u32,
-    pub pixels: Vec<RGBA>,
+    pub pixels: Vec<RGB>,
 }
 
 impl Image {
@@ -40,12 +39,12 @@ impl Image {
             height,
             pixels: Vec::new(),
         };
-        out.fill(RGBA::from(0x00_AA_AA_FF));
+        out.fill(RGB::from(0x00_AA_AA));
         out
     }
 
     /// Fill this image with a given color.
-    pub fn fill(&mut self, color: RGBA) {
+    pub fn fill(&mut self, color: RGB) {
         self.pixels.clear();
         self.pixels
             .resize((self.width * self.height) as usize, color);
@@ -56,7 +55,7 @@ impl Image {
             chunk[0] = p.r;
             chunk[1] = p.g;
             chunk[2] = p.b;
-            chunk[3] = p.a;
+            chunk[3] = 0xFF;
         }
     }
 }
@@ -76,7 +75,7 @@ pub fn render_loop(mut input: triple_buffer::Input<Image>) {
             _ => {}
         }
         cycle += 1;
-        input.input_buffer_mut().fill(RGBA { r, g, b, a: 0xFF });
+        input.input_buffer_mut().fill(RGB { r, g, b });
         input.publish();
         let time_left_in_frame = Duration::from_micros(16_667).saturating_sub(loop_start.elapsed());
         thread::sleep(time_left_in_frame);
