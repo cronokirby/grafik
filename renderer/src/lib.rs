@@ -5,7 +5,7 @@ use std::{
 
 pub const MESSAGE: &'static str = "hello from renderer!";
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct RGBA {
     pub r: u8,
     pub g: u8,
@@ -40,7 +40,7 @@ impl Image {
             height,
             pixels: Vec::new(),
         };
-        out.fill(RGBA::black());
+        out.fill(RGBA::from(0x00_AA_AA_FF));
         out
     }
 
@@ -62,15 +62,22 @@ impl Image {
 }
 
 pub fn render_loop(mut input: triple_buffer::Input<Image>) {
-    let mut color = 0u32;
+    let mut r = 0u8;
+    let mut g = 0u8;
+    let mut b = 0u8;
+    let mut cycle = 0u8;
     loop {
         let loop_start = Instant::now();
-        color += 1;
-        let [a, b, g, r] = color.to_be_bytes();
-        if a > 0 {
-            color = 0;
+        match cycle {
+            0 => r = r.wrapping_mul(2) + 1,
+            5 => g = g.wrapping_mul(3) + 1,
+            10 => b = b.wrapping_mul(5) + 1,
+            15 => cycle = 0,
+            _ => {}
         }
-        input.input_buffer_mut().fill(RGBA { r, g, b, a });
+        cycle += 1;
+        input.input_buffer_mut().fill(RGBA { r, g, b, a: 0xFF });
+        input.publish();
         let time_left_in_frame = Duration::from_micros(16_667).saturating_sub(loop_start.elapsed());
         thread::sleep(time_left_in_frame);
     }
