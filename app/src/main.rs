@@ -14,7 +14,7 @@ use winit::window::Window;
 use winit_input_helper::WinitInputHelper;
 
 const WIDTH: u32 = 600;
-const HEIGHT: u32 = 400;
+const HEIGHT: u32 = 600;
 
 fn main() -> Result<(), Error> {
     let event_loop = EventLoop::new().unwrap();
