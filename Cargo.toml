@@ -22,3 +22,7 @@ pixels = "0.17"
 triple_buffer = "9.0"
 winit = "0.30"
 winit_input_helper = "0.17"
+wgpu = "29"
+pollster = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+rfd = "0.15"

@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-grafik-renderer = { workspace = true }
-pixels = { workspace = true }
-triple_buffer = { workspace = true }
+wgpu = { workspace = true }
 winit = { workspace = true }
-winit_input_helper = { workspace = true }
+pollster = { workspace = true }
+image = { workspace = true }
+rfd = { workspace = true }
