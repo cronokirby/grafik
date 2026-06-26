@@ -1,17 +1,32 @@
 // Raymarches a simple SDF scene and shades each hit by its surface normal,
 // encoded as RGB. Rays that miss the scene are black.
 
-@group(0) @binding(0) var output: texture_storage_2d<rgba8unorm, write>;
+struct Sphere {
+    // The center of the sphere, and then the radius.
+    //
+    // Because of alignment rules, this is more efficient than having a vec3
+    // followed by an f32.
+    center_radius: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var output: texture_storage_2d<rgba8unorm, write>;
+
+@group(0) @binding(1)
+var<storage, read> spheres: array<Sphere>;
 
 const MAX_STEPS: u32 = 100u;
 const MAX_DIST: f32 = 20.0;
 const SURF_DIST: f32 = 0.001;
 
-// Signed distance to the scene: two spheres.
+// Signed distance to the scene.
 fn scene(p: vec3<f32>) -> f32 {
-    let s1 = length(p - vec3<f32>(-1.2, 0.0, -4.0)) - 1.5;
-    let s2 = length(p - vec3<f32>(1.5, 0.5, -6.0)) - 1.0;
-    return min(s1, s2);
+    var d = 1e20;
+    for (var i = 0u; i < arrayLength(&spheres); i++) {
+        let s = spheres[i].center_radius;
+        d = min(d, length(p - s.xyz) - s.w);
+    }
+    return d;
 }
 
 // Estimate the surface normal at `p` via the gradient of the SDF.

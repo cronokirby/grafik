@@ -2,12 +2,19 @@
 
 use std::sync::Arc;
 
+use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GPUSphere {
+    center_radius: [f32; 4],
+}
 
 /// Size of the image computed by the compute shader.
 const WIDTH: u32 = 600;
@@ -306,29 +313,64 @@ impl State {
         });
         let image_view = image_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        let spheres = [
+            GPUSphere {
+                center_radius: [-0.8, 0.0, -4.0, 1.2],
+            },
+            GPUSphere {
+                center_radius: [1.5, 0.5, -6.0, 1.0],
+            },
+            GPUSphere {
+                center_radius: [0.0, -1.25, -5.0, 0.75],
+            },
+        ];
+        let sphere_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("sphere buffer"),
+            contents: bytemuck::cast_slice(&spheres),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
         // --- Compute pipeline ---
         let compute_shader = device.create_shader_module(wgpu::include_wgsl!("compute.wgsl"));
         let compute_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("compute bind group layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::StorageTexture {
-                        access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: IMAGE_FORMAT,
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::StorageTexture {
+                            access: wgpu::StorageTextureAccess::WriteOnly,
+                            format: IMAGE_FORMAT,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                        },
+                        count: None,
                     },
-                    count: None,
-                }],
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
             });
         let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("compute bind group"),
             layout: &compute_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&image_view),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&image_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: sphere_buffer.as_entire_binding(),
+                },
+            ],
         });
         let compute_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

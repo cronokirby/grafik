@@ -894,6 +894,7 @@ dependencies = [
 name = "grafik-app"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "image",
  "pollster",
  "rfd",

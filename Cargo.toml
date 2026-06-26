@@ -17,6 +17,7 @@ opt-level = 3
 opt-level = 0
 
 [workspace.dependencies]
+bytemuck = { version = "1", features = ["derive"] }
 grafik-renderer = { path = "renderer" }
 pixels = "0.17"
 triple_buffer = "9.0"
