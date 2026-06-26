@@ -5,3 +5,7 @@
 
 # Rust related things.
 target/
+
+# Don't want to force people to do this.
+.envrc
+.direnv/
