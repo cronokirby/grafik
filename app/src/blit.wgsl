@@ -25,8 +25,14 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VsOut {
     return out;
 }
 
-// Encode linear color into sRGB for display. The image texture holds linear
-// values; the surface is a non-sRGB format, so we apply the curve ourselves.
+fn tone_map_reinhard(c: vec3<f32>) -> vec3<f32> {
+    let linear = max(c, vec3<f32>(0.0));
+    return linear / (linear + vec3<f32>(1.0));
+}
+
+// Encode linear color into sRGB for display. The image texture holds HDR
+// linear values; the surface is a non-sRGB format, so we apply tone mapping
+// and the sRGB curve ourselves.
 fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
     let lo = c * 12.92;
     let hi = 1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055;
@@ -36,5 +42,5 @@ fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let c = textureSample(tex, samp, in.uv);
-    return vec4<f32>(linear_to_srgb(c.rgb), c.a);
+    return vec4<f32>(linear_to_srgb(tone_map_reinhard(c.rgb)), c.a);
 }

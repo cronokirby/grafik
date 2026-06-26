@@ -14,6 +14,15 @@ use winit::window::{Window, WindowId};
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct GPUSphere {
     center_radius: [f32; 4],
+    albedo_metallic: [f32; 4],
+    roughness_ao: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GPULight {
+    position: [f32; 4],
+    color_intensity: [f32; 4],
 }
 
 /// Size of the image computed by the compute shader.
@@ -26,7 +35,7 @@ const PRESENTATION: PresentationConfig = PresentationConfig {
 };
 
 /// Texture format shared by the compute output, the blit sampler, and PNG export.
-const IMAGE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+const IMAGE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba32Float;
 
 struct PresentationConfig {
     /// Color used to clear the surface area outside the aspect-preserving image.
@@ -153,9 +162,10 @@ fn linear_to_srgb(c: f32) -> f32 {
     }
 }
 
-/// Encode one linear 8-bit channel into an sRGB 8-bit channel.
-fn linear_u8_to_srgb_u8(linear: u8) -> u8 {
-    let v = linear_to_srgb(linear as f32 / 255.0);
+/// Tone map one HDR linear channel, then encode it into an sRGB 8-bit channel.
+fn hdr_linear_to_srgb_u8(linear: f32) -> u8 {
+    let tone_mapped = linear.max(0.0) / (linear.max(0.0) + 1.0);
+    let v = linear_to_srgb(tone_mapped);
     (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8
 }
 
@@ -316,17 +326,46 @@ impl State {
         let spheres = [
             GPUSphere {
                 center_radius: [-0.8, 0.0, -4.0, 1.2],
+                albedo_metallic: [0.95, 0.18, 0.12, 0.0],
+                roughness_ao: [0.38, 1.0, 0.0, 0.0],
             },
             GPUSphere {
                 center_radius: [1.5, 0.5, -6.0, 1.0],
+                albedo_metallic: [0.9, 0.78, 0.35, 1.0],
+                roughness_ao: [0.24, 1.0, 0.0, 0.0],
             },
             GPUSphere {
                 center_radius: [0.0, -1.25, -5.0, 0.75],
+                albedo_metallic: [0.24, 0.55, 0.95, 0.0],
+                roughness_ao: [0.72, 1.0, 0.0, 0.0],
             },
         ];
         let sphere_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("sphere buffer"),
             contents: bytemuck::cast_slice(&spheres),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        let lights = [
+            GPULight {
+                position: [-3.5, 3.0, -2.0, 0.0],
+                color_intensity: [1.0, 0.83, 0.7, 120.0],
+            },
+            GPULight {
+                position: [4.0, 2.5, -3.5, 0.0],
+                color_intensity: [0.35, 0.54, 1.0, 130.0],
+            },
+            GPULight {
+                position: [0.0, -3.5, -2.0, 0.0],
+                color_intensity: [0.33, 1.0, 0.76, 105.0],
+            },
+            GPULight {
+                position: [-1.5, 0.0, 1.0, 0.0],
+                color_intensity: [0.71, 0.71, 1.0, 35.0],
+            },
+        ];
+        let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("light buffer"),
+            contents: bytemuck::cast_slice(&lights),
             usage: wgpu::BufferUsages::STORAGE,
         });
 
@@ -356,6 +395,16 @@ impl State {
                         },
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
                 ],
             });
         let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -369,6 +418,10 @@ impl State {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: sphere_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: light_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -391,8 +444,8 @@ impl State {
         let blit_shader = device.create_shader_module(wgpu::include_wgsl!("blit.wgsl"));
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("blit sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
         let blit_bind_group_layout =
@@ -403,7 +456,7 @@ impl State {
                         binding: 0,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
                             view_dimension: wgpu::TextureViewDimension::D2,
                             multisampled: false,
                         },
@@ -412,7 +465,7 @@ impl State {
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                         count: None,
                     },
                 ],
@@ -581,7 +634,7 @@ impl State {
 
     fn save_png(&self, path: &std::path::Path) {
         // Rows in a copy must be aligned to COPY_BYTES_PER_ROW_ALIGNMENT (256).
-        let bytes_per_pixel = 4u32;
+        let bytes_per_pixel = 16u32;
         let unpadded_bytes_per_row = WIDTH * bytes_per_pixel;
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
@@ -640,18 +693,22 @@ impl State {
             }
         }
 
-        // Strip the row padding and collect tightly packed RGBA bytes, encoding
-        // the linear image into sRGB (matching the blit shader). Alpha is linear
-        // and passes through unchanged.
-        let mut pixels = Vec::with_capacity((unpadded_bytes_per_row * HEIGHT) as usize);
+        // Strip the row padding and collect tightly packed RGBA bytes, tone
+        // mapping the HDR linear image and encoding it into sRGB to match the
+        // blit shader.
+        let mut pixels = Vec::with_capacity((WIDTH * HEIGHT * 4) as usize);
         {
             let data = buffer.slice(..).get_mapped_range();
             for row in data.chunks_exact(padded_bytes_per_row as usize) {
-                for px in row[..unpadded_bytes_per_row as usize].chunks_exact(4) {
-                    pixels.push(linear_u8_to_srgb_u8(px[0]));
-                    pixels.push(linear_u8_to_srgb_u8(px[1]));
-                    pixels.push(linear_u8_to_srgb_u8(px[2]));
-                    pixels.push(px[3]);
+                for px in row[..unpadded_bytes_per_row as usize].chunks_exact(16) {
+                    let r = f32::from_ne_bytes(px[0..4].try_into().expect("f32 channel"));
+                    let g = f32::from_ne_bytes(px[4..8].try_into().expect("f32 channel"));
+                    let b = f32::from_ne_bytes(px[8..12].try_into().expect("f32 channel"));
+                    let a = f32::from_ne_bytes(px[12..16].try_into().expect("f32 channel"));
+                    pixels.push(hdr_linear_to_srgb_u8(r));
+                    pixels.push(hdr_linear_to_srgb_u8(g));
+                    pixels.push(hdr_linear_to_srgb_u8(b));
+                    pixels.push((a.clamp(0.0, 1.0) * 255.0 + 0.5) as u8);
                 }
             }
         }
