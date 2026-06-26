@@ -64,7 +64,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let t = raymarch(ro, rd);
 
-    var color = vec3<f32>(0.0, 0.0, 0.0);
+    var color = vec3<f32>(0.1, 0.1, 0.1);
     if t >= 0.0 {
         let p = ro + rd * t;
         let normal = calc_normal(p);

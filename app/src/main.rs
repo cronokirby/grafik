@@ -13,8 +13,122 @@ use winit::window::{Window, WindowId};
 const WIDTH: u32 = 600;
 const HEIGHT: u32 = 600;
 
+/// Presentation settings for drawing the computed image into the window.
+const PRESENTATION: PresentationConfig = PresentationConfig {
+    letterbox_color: wgpu::Color::BLACK,
+};
+
 /// Texture format shared by the compute output, the blit sampler, and PNG export.
 const IMAGE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+struct PresentationConfig {
+    /// Color used to clear the surface area outside the aspect-preserving image.
+    letterbox_color: wgpu::Color,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Viewport {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+fn letterboxed_viewport(
+    surface_width: u32,
+    surface_height: u32,
+    image_width: u32,
+    image_height: u32,
+) -> Viewport {
+    let surface_width = surface_width.max(1) as f32;
+    let surface_height = surface_height.max(1) as f32;
+    let image_aspect = image_width.max(1) as f32 / image_height.max(1) as f32;
+    let surface_aspect = surface_width / surface_height;
+
+    let (width, height) = if surface_aspect > image_aspect {
+        (surface_height * image_aspect, surface_height)
+    } else {
+        (surface_width, surface_width / image_aspect)
+    };
+
+    Viewport {
+        x: (surface_width - width) * 0.5,
+        y: (surface_height - height) * 0.5,
+        width,
+        height,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_viewport_close(actual: Viewport, expected: Viewport) {
+        const EPSILON: f32 = 0.01;
+        assert!((actual.x - expected.x).abs() < EPSILON, "{actual:?}");
+        assert!((actual.y - expected.y).abs() < EPSILON, "{actual:?}");
+        assert!(
+            (actual.width - expected.width).abs() < EPSILON,
+            "{actual:?}"
+        );
+        assert!(
+            (actual.height - expected.height).abs() < EPSILON,
+            "{actual:?}"
+        );
+    }
+
+    #[test]
+    fn viewport_fills_matching_aspect() {
+        assert_viewport_close(
+            letterboxed_viewport(800, 600, 400, 300),
+            Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: 800.0,
+                height: 600.0,
+            },
+        );
+    }
+
+    #[test]
+    fn viewport_letterboxes_wide_surface() {
+        assert_viewport_close(
+            letterboxed_viewport(1200, 600, 600, 600),
+            Viewport {
+                x: 300.0,
+                y: 0.0,
+                width: 600.0,
+                height: 600.0,
+            },
+        );
+    }
+
+    #[test]
+    fn viewport_letterboxes_tall_surface() {
+        assert_viewport_close(
+            letterboxed_viewport(600, 1200, 600, 600),
+            Viewport {
+                x: 0.0,
+                y: 300.0,
+                width: 600.0,
+                height: 600.0,
+            },
+        );
+    }
+
+    #[test]
+    fn viewport_handles_zero_dimensions() {
+        assert_viewport_close(
+            letterboxed_viewport(0, 0, 0, 0),
+            Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: 1.0,
+                height: 1.0,
+            },
+        );
+    }
+}
 
 fn main() {
     let event_loop = EventLoop::new().expect("failed to create event loop");
@@ -380,7 +494,7 @@ impl State {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(PRESENTATION.letterbox_color),
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,
@@ -390,6 +504,16 @@ impl State {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            let viewport =
+                letterboxed_viewport(self.config.width, self.config.height, WIDTH, HEIGHT);
+            pass.set_viewport(
+                viewport.x,
+                viewport.y,
+                viewport.width,
+                viewport.height,
+                0.0,
+                1.0,
+            );
             pass.set_pipeline(&self.blit_pipeline);
             pass.set_bind_group(0, &self.blit_bind_group, &[]);
             pass.draw(0..3, 0..1);
