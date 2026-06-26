@@ -55,6 +55,7 @@
             rust-analyzer
             rustc
             rustfmt
+            wgsl-analyzer
             just
           ];
 
